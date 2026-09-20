@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>حضور العمالة</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <header class="topbar">
@@ -15,6 +15,10 @@
   <div class="toolbar">
     <input id="search" type="search" placeholder="بحث بالاسم أو رقم البطاقة">
     <button id="addBtn" class="btn-primary" title="إضافة عامل">+</button>
+  </div>
+  <div class="subbar">
+    <button id="undoBtn">↶ تراجع</button>
+    <button id="logBtn">سجل العمليات</button>
   </div>
   <div id="count" class="count"></div>
   <ul id="list" class="list"></ul>
@@ -33,7 +37,17 @@
   </form>
 </dialog>
 
-<script src="db.js"></script>
-<script src="app.js"></script>
+<dialog id="logDlg">
+  <h2>سجل العمليات</h2>
+  <ul id="logList" class="loglist"></ul>
+  <div class="actions">
+    <button type="button" id="logClose">إغلاق</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script src="db.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
-  </html>
+</html>
