@@ -3,6 +3,7 @@ let workers = [];
 let openByWorker = new Map();
 let doneMsByWorker = new Map();
 let busy = false;
+let toastTimer;
 
 function normalizeDigits(s) {
   return s.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
@@ -15,6 +16,14 @@ function el(tag, cls, text) {
   return e;
 }
 
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
 function tick() {
   $("clock").textContent = new Date().toLocaleTimeString("ar-EG", { timeZone: "Africa/Cairo" });
 }
@@ -22,6 +31,13 @@ function tick() {
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString("ar-EG",
     { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" });
+}
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString("ar-EG", {
+    timeZone: "Africa/Cairo", year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "numeric", minute: "2-digit"
+  });
 }
 
 function fmtDuration(ms) {
@@ -113,19 +129,53 @@ async function doAction(act, workerId) {
     if (act === "in") {
       if (openByWorker.has(workerId) || doneMsByWorker.has(workerId)) return;
       const recordId = await DB.checkIn(workerId);
-      await DB.addLog("تسجيل حضور", w.name, { workerId, recordId });
+      await DB.addLog("تسجيل حضور", w.name, { type: "in", workerId, recordId });
     } else {
       const rec = openByWorker.get(workerId);
       if (!rec) return;
       await DB.checkOut(rec.id);
-      await DB.addLog("تسجيل انصراف", w.name, { workerId, recordId: rec.id });
+      await DB.addLog("تسجيل انصراف", w.name, { type: "out", workerId, recordId: rec.id });
     }
     await loadAttendance();
   } catch (err) {
-    alert("حدث خطأ أثناء التسجيل");
+    toast("حدث خطأ أثناء التسجيل");
   } finally {
     busy = false;
   }
+}
+
+async function doUndo() {
+  if (busy) return;
+  busy = true;
+  try {
+    const e = await DB.undoLast(cairoDate());
+    if (!e) {
+      toast("لا توجد عمليات للتراجع عنها اليوم");
+    } else {
+      toast("تم التراجع عن: " + e.action + " — " + e.details);
+      await loadWorkers();
+      await loadAttendance();
+    }
+  } catch (err) {
+    toast("حدث خطأ أثناء التراجع");
+  } finally {
+    busy = false;
+  }
+}
+
+async function showLog() {
+  const items = await DB.recentLog(100);
+  const ul = $("logList");
+  ul.innerHTML = "";
+  if (!items.length) ul.append(el("li", "log-empty", "لا توجد عمليات بعد"));
+  for (const e of items) {
+    const li = el("li", "log-item" + (e.undone ? " undone" : ""));
+    li.append(el("div", "log-time", fmtDateTime(e.time)));
+    li.append(el("div", "log-text",
+      e.action + (e.details ? " — " + e.details : "") + (e.undone ? " (تم التراجع)" : "")));
+    ul.append(li);
+  }
+  $("logDlg").showModal();
 }
 
 function openDialog() {
@@ -141,8 +191,8 @@ async function saveWorker(e) {
   const cardCode = normalizeDigits($("fCard").value.trim());
   if (!name || !cardCode) return;
   try {
-    await DB.addWorker(name, cardCode);
-    await DB.addLog("إضافة عامل", name + " — " + cardCode);
+    const id = await DB.addWorker(name, cardCode);
+    await DB.addLog("إضافة عامل", name + " — " + cardCode, { type: "addWorker", workerId: id });
     $("dlg").close();
     await loadWorkers();
   } catch (err) {
@@ -161,6 +211,9 @@ async function init() {
   $("cancelBtn").onclick = () => $("dlg").close();
   $("form").onsubmit = saveWorker;
   $("search").oninput = render;
+  $("undoBtn").onclick = doUndo;
+  $("logBtn").onclick = showLog;
+  $("logClose").onclick = () => $("logDlg").close();
   $("list").onclick = e => {
     const b = e.target.closest("button[data-act]");
     if (!b || b.disabled) return;
