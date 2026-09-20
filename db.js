@@ -13,7 +13,7 @@ function entryType(e) {
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("attendance", 2);
+    const req = indexedDB.open("attendance", 3);
     req.onupgradeneeded = (e) => {
       const d = req.result;
       const t = req.transaction;
@@ -28,8 +28,18 @@ function openDB() {
       if (e.oldVersion < 2) {
         t.objectStore("attendance").createIndex("open", "open");
       }
+      if (e.oldVersion < 3) {
+        const ws = t.objectStore("workers");
+        if (ws.indexNames.contains("cardCode")) ws.deleteIndex("cardCode");
+        ws.createIndex("cardCode", "cardCode", { unique: false });
+      }
     };
-    req.onsuccess = () => { db = req.result; resolve(); };
+    req.onblocked = () => alert("اقفل باقي نوافذ التطبيق المفتوحة ثم افتحه من جديد");
+    req.onsuccess = () => {
+      db = req.result;
+      db.onversionchange = () => db.close();
+      resolve();
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -45,11 +55,57 @@ function tx(store, mode, fn) {
 
 const DB = {
   addWorker(name, cardCode) {
-    return tx("workers", "readwrite", s =>
-      s.add({ name, cardCode, active: true, createdAt: new Date().toISOString() }));
+    return new Promise((resolve, reject) => {
+      const t = db.transaction("workers", "readwrite");
+      const s = t.objectStore("workers");
+      let newId;
+      const g = s.getAll();
+      g.onsuccess = () => {
+        if (g.result.some(w => !w.deleted && w.cardCode === cardCode)) {
+          const err = new Error("duplicate card");
+          err.name = "ConstraintError";
+          reject(err);
+          t.abort();
+          return;
+        }
+        const a = s.add({ name, cardCode, active: true, createdAt: new Date().toISOString() });
+        a.onsuccess = () => { newId = a.result; };
+      };
+      t.oncomplete = () => resolve(newId);
+      t.onabort = () => reject(t.error);
+    });
   },
   allWorkers() {
     return tx("workers", "readonly", s => s.getAll());
+  },
+  setWorkerFields(workerId, fn) {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction("workers", "readwrite");
+      const s = t.objectStore("workers");
+      const g = s.get(workerId);
+      let prev;
+      g.onsuccess = () => {
+        const w = g.result;
+        if (!w) return;
+        prev = fn(w);
+        s.put(w);
+      };
+      t.oncomplete = () => resolve(prev);
+      t.onabort = () => reject(t.error);
+    });
+  },
+  newDay(workerId) {
+    return DB.setWorkerFields(workerId, w => {
+      const prev = w.newDayAt || null;
+      w.newDayAt = new Date().toISOString();
+      return prev;
+    });
+  },
+  deleteWorker(workerId) {
+    return DB.setWorkerFields(workerId, w => {
+      w.deleted = true;
+      w.deletedAt = new Date().toISOString();
+    });
   },
   addLog(action, details, data) {
     return tx("log", "readwrite", s =>
@@ -127,6 +183,22 @@ const DB = {
           };
         } else if (type === "addWorker") {
           wS.delete(e.data.workerId);
+        } else if (type === "newDay") {
+          const g = wS.get(e.data.workerId);
+          g.onsuccess = () => {
+            const w = g.result;
+            if (w) {
+              if (e.data.prev) w.newDayAt = e.data.prev;
+              else delete w.newDayAt;
+              wS.put(w);
+            }
+          };
+        } else if (type === "deleteWorker") {
+          const g = wS.get(e.data.workerId);
+          g.onsuccess = () => {
+            const w = g.result;
+            if (w) { delete w.deleted; delete w.deletedAt; wS.put(w); }
+          };
         }
         logS.add({
           time: new Date().toISOString(),
