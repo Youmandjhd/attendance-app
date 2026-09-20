@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>حضور العمالة</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>حضور العمالة</h1>
+  <div id="clock" class="clock">--:--:--</div>
+</header>
+<main>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="بحث بالاسم أو رقم البطاقة">
+    <button id="addBtn" class="btn-primary" title="إضافة عامل">+</button>
+  </div>
+  <div id="count" class="count"></div>
+  <ul id="list" class="list"></ul>
+</main>
+
+<dialog id="dlg">
+  <form id="form">
+    <h2>إضافة عامل</h2>
+    <label>الاسم <input id="fName" required></label>
+    <label>رقم البطاقة <input id="fCard" required></label>
+    <div id="err" class="err"></div>
+    <div class="actions">
+      <button type="button" id="cancelBtn">إلغاء</button>
+      <button type="submit" class="btn-primary">حفظ</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+  </html>
