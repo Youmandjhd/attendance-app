@@ -33,3 +33,13 @@ dialog label{display:block;margin:10px 0}
 .btn-in{background:#1e7a46;color:#fff;border-color:#1e7a46}
 .btn-out{background:#fff;color:#b42318;border-color:#b42318}
 .btns button:disabled{opacity:.35;cursor:not-allowed}
+.subbar{display:flex;gap:8px;margin-top:8px}
+.subbar button{flex:1;font-size:15px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 16px;border-radius:6px;font-size:15px;max-width:90%;opacity:0;pointer-events:none;transition:opacity .2s;z-index:10}
+.toast.show{opacity:1}
+#logDlg{max-width:600px}
+.loglist{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto}
+.log-item{padding:8px 0;border-bottom:1px solid var(--line)}
+.log-time{font-size:13px;color:var(--muted)}
+.log-item.undone .log-text{text-decoration:line-through;color:var(--muted)}
+.log-empty{color:var(--muted);padding:8px 0}
