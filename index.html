@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>حضور العمالة</title>
 <link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="reports.css?v=4">
 </head>
 <body>
-<header class="topbar">
+<header class="topbar no-print">
   <h1>حضور العمالة</h1>
   <div id="clock" class="clock">--:--:--</div>
 </header>
-<main>
+
+<main id="mainView">
   <div class="toolbar">
     <input id="search" type="search" placeholder="بحث بالاسم أو رقم البطاقة">
     <button id="addBtn" class="btn-primary" title="إضافة عامل">+</button>
@@ -19,10 +21,34 @@
   <div class="subbar">
     <button id="undoBtn">↶ تراجع</button>
     <button id="logBtn">سجل العمليات</button>
+    <button id="repBtn">التقارير</button>
   </div>
   <div id="count" class="count"></div>
   <ul id="list" class="list"></ul>
 </main>
+
+<section id="reportView" class="rp-view hide">
+  <div class="rp-row no-print">
+    <button id="rpBack">← رجوع</button>
+  </div>
+  <div class="rp-row rp-tabs no-print">
+    <button id="tabDay" class="active">يومي</button>
+    <button id="tabMonth">شهري</button>
+  </div>
+  <div class="rp-row no-print">
+    <input type="date" id="rpDate">
+    <input type="month" id="rpMonth" class="hide">
+  </div>
+  <div class="rp-row no-print">
+    <button id="rpPrint" class="btn-primary">طباعة / حفظ PDF</button>
+    <button id="rpExcel">تصدير Excel</button>
+  </div>
+  <div class="paper">
+    <h2 id="rpTitle"></h2>
+    <div id="rpSub" class="rp-sub"></div>
+    <div class="table-wrap"><table id="rpTable"></table></div>
+  </div>
+</section>
 
 <dialog id="dlg">
   <form id="form">
@@ -49,5 +75,7 @@
 
 <script src="db.js?v=3"></script>
 <script src="app.js?v=3"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="reports.js?v=4"></script>
 </body>
 </html>
