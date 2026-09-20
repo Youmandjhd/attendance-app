@@ -2,8 +2,12 @@ const $ = id => document.getElementById(id);
 let workers = [];
 let openByWorker = new Map();
 let doneMsByWorker = new Map();
+let lastOutByWorker = new Map();
 let busy = false;
 let toastTimer;
+let pressTimer = null;
+let pressStart = null;
+let delId = null;
 
 function normalizeDigits(s) {
   return s.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
@@ -47,12 +51,18 @@ function fmtDuration(ms) {
   return h.toLocaleString("ar-EG") + " س " + m.toLocaleString("ar-EG") + " د";
 }
 
+function isArmed(w) {
+  const last = lastOutByWorker.get(w.id);
+  return !!(w.newDayAt && last && w.newDayAt > last);
+}
+
 function render() {
   const q = normalizeDigits($("search").value.trim()).toLowerCase();
   const shown = workers.filter(w =>
     w.name.toLowerCase().includes(q) || w.cardCode.toLowerCase().includes(q));
+  const working = workers.filter(w => openByWorker.has(w.id)).length;
   $("count").textContent = "عدد العمال: " + workers.length +
-    " — قيد العمل: " + openByWorker.size +
+    " — قيد العمل: " + working +
     (q ? " — نتائج البحث: " + shown.length : "");
   const list = $("list");
   list.innerHTML = "";
@@ -61,25 +71,46 @@ function render() {
   for (const w of shown) {
     const open = openByWorker.get(w.id);
     const doneMs = doneMsByWorker.get(w.id);
+    const armed = isArmed(w);
     let statusText = "لم يسجل حضور";
     let statusCls = "none";
     let hoursText = "";
+    let canIn = true;
+    let canOut = false;
+    let canNewDay = false;
 
     if (open) {
       statusText = "قيد العمل";
       statusCls = "working";
-      hoursText = "حضور " + fmtTime(open.checkIn) +
-        " — ساعات العمل: " + fmtDuration(now - new Date(open.checkIn).getTime());
+      hoursText = "حضور " + fmtTime(open.checkIn) + " — ساعات العمل: " +
+        fmtDuration((doneMs || 0) + now - new Date(open.checkIn).getTime());
+      canIn = false;
+      canOut = true;
     } else if (doneMs !== undefined) {
-      statusText = "تم الحضور والانصراف";
-      statusCls = "done";
       hoursText = "ساعات العمل: " + fmtDuration(doneMs);
+      if (armed) {
+        statusText = "جاهز لحضور جديد";
+        statusCls = "ready";
+      } else {
+        statusText = "تم الحضور والانصراف";
+        statusCls = "done";
+        canIn = false;
+        canNewDay = true;
+      }
     }
 
     const li = el("li", "item");
     const info = el("div", "info");
     const top = el("div", "w-top");
-    top.append(el("span", "w-name", w.name), el("span", "badge " + statusCls, statusText));
+    const nm = el("span", "w-name", w.name);
+    nm.dataset.id = w.id;
+    top.append(nm, el("span", "badge " + statusCls, statusText));
+    if (canNewDay) {
+      const nd = el("button", "btn-newday", "يوم جديد");
+      nd.dataset.act = "newday";
+      nd.dataset.id = w.id;
+      top.append(nd);
+    }
     info.append(top, el("div", "w-card", "بطاقة: " + w.cardCode));
     if (hoursText) info.append(el("div", "w-hours", hoursText));
 
@@ -87,11 +118,11 @@ function render() {
     const bIn = el("button", "btn-in", "حضور");
     bIn.dataset.act = "in";
     bIn.dataset.id = w.id;
-    bIn.disabled = !!open || doneMs !== undefined;
+    bIn.disabled = !canIn;
     const bOut = el("button", "btn-out", "انصراف");
     bOut.dataset.act = "out";
     bOut.dataset.id = w.id;
-    bOut.disabled = !open;
+    bOut.disabled = !canOut;
     btns.append(bIn, bOut);
 
     li.append(info, btns);
@@ -100,7 +131,8 @@ function render() {
 }
 
 async function loadWorkers() {
-  workers = await DB.allWorkers();
+  const all = await DB.allWorkers();
+  workers = all.filter(w => !w.deleted);
   workers.sort((a, b) => a.name.localeCompare(b.name, "ar"));
   render();
 }
@@ -111,10 +143,13 @@ async function loadAttendance() {
   const openRecs = await DB.openRecords();
   openByWorker = new Map(openRecs.map(r => [r.workerId, r]));
   doneMsByWorker = new Map();
+  lastOutByWorker = new Map();
   for (const r of todayRecs) {
     if (r.checkOut) {
       const ms = new Date(r.checkOut) - new Date(r.checkIn);
       doneMsByWorker.set(r.workerId, (doneMsByWorker.get(r.workerId) || 0) + ms);
+      const prev = lastOutByWorker.get(r.workerId);
+      if (!prev || r.checkOut > prev) lastOutByWorker.set(r.workerId, r.checkOut);
     }
   }
   render();
@@ -127,14 +162,20 @@ async function doAction(act, workerId) {
     const w = workers.find(x => x.id === workerId);
     if (!w) return;
     if (act === "in") {
-      if (openByWorker.has(workerId) || doneMsByWorker.has(workerId)) return;
+      const locked = doneMsByWorker.has(workerId) && !isArmed(w);
+      if (openByWorker.has(workerId) || locked) return;
       const recordId = await DB.checkIn(workerId);
       await DB.addLog("تسجيل حضور", w.name, { type: "in", workerId, recordId });
-    } else {
+    } else if (act === "out") {
       const rec = openByWorker.get(workerId);
       if (!rec) return;
       await DB.checkOut(rec.id);
       await DB.addLog("تسجيل انصراف", w.name, { type: "out", workerId, recordId: rec.id });
+    } else if (act === "newday") {
+      if (openByWorker.has(workerId) || !doneMsByWorker.has(workerId) || isArmed(w)) return;
+      const prev = await DB.newDay(workerId);
+      await DB.addLog("يوم جديد", w.name, { type: "newDay", workerId, prev });
+      await loadWorkers();
     }
     await loadAttendance();
   } catch (err) {
@@ -202,6 +243,71 @@ async function saveWorker(e) {
   }
 }
 
+function askDelete(id) {
+  const w = workers.find(x => x.id === id);
+  if (!w) return;
+  if (openByWorker.has(id)) {
+    toast("لا يمكن حذف عامل قيد العمل — سجّل انصرافه أولًا");
+    return;
+  }
+  delId = id;
+  $("delName").textContent = w.name;
+  $("delDlg").showModal();
+}
+
+async function confirmDelete() {
+  if (delId === null || busy) return;
+  busy = true;
+  const id = delId;
+  try {
+    const w = workers.find(x => x.id === id);
+    await DB.deleteWorker(id);
+    if (w) {
+      await DB.addLog("حذف عامل", w.name + " — " + w.cardCode, { type: "deleteWorker", workerId: id });
+    }
+    delId = null;
+    $("delDlg").close();
+    toast("تم حذف العامل (يمكن التراجع عنه اليوم)");
+    await loadWorkers();
+    await loadAttendance();
+  } catch (err) {
+    toast("حدث خطأ أثناء الحذف");
+  } finally {
+    busy = false;
+  }
+}
+
+function cancelPress() {
+  clearTimeout(pressTimer);
+  pressTimer = null;
+}
+
+function setupLongPress() {
+  const list = $("list");
+  list.addEventListener("pointerdown", e => {
+    const n = e.target.closest(".w-name");
+    if (!n) return;
+    pressStart = { x: e.clientX, y: e.clientY };
+    const id = Number(n.dataset.id);
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      askDelete(id);
+    }, 600);
+  });
+  list.addEventListener("pointermove", e => {
+    if (pressTimer && pressStart &&
+        (Math.abs(e.clientX - pressStart.x) > 10 || Math.abs(e.clientY - pressStart.y) > 10)) {
+      cancelPress();
+    }
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
+    list.addEventListener(ev, cancelPress));
+  list.addEventListener("contextmenu", e => {
+    if (e.target.closest(".w-name")) e.preventDefault();
+  });
+}
+
 async function init() {
   tick();
   setInterval(tick, 1000);
@@ -214,11 +320,14 @@ async function init() {
   $("undoBtn").onclick = doUndo;
   $("logBtn").onclick = showLog;
   $("logClose").onclick = () => $("logDlg").close();
+  $("delOk").onclick = confirmDelete;
+  $("delCancel").onclick = () => { delId = null; $("delDlg").close(); };
   $("list").onclick = e => {
     const b = e.target.closest("button[data-act]");
     if (!b || b.disabled) return;
     doAction(b.dataset.act, Number(b.dataset.id));
   };
+  setupLongPress();
   await loadWorkers();
   await loadAttendance();
   setInterval(loadAttendance, 30000);
