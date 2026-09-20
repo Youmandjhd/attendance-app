@@ -6,6 +6,7 @@
 <title>حضور العمالة</title>
 <link rel="stylesheet" href="style.css?v=3">
 <link rel="stylesheet" href="reports.css?v=4">
+<link rel="stylesheet" href="extra.css?v=5">
 </head>
 <body>
 <header class="topbar no-print">
@@ -71,10 +72,20 @@
   </div>
 </dialog>
 
+<dialog id="delDlg">
+  <h2>حذف العامل</h2>
+  <div id="delName"></div>
+  <p>سيختفي العامل من القائمة، وتفضل سجلاته ظاهرة في التقارير القديمة. تقدر تتراجع عن الحذف من زر "تراجع" في نفس اليوم.</p>
+  <div class="actions">
+    <button type="button" id="delCancel">إلغاء</button>
+    <button type="button" id="delOk" class="btn-danger">حذف العامل</button>
+  </div>
+</dialog>
+
 <div id="toast" class="toast"></div>
 
-<script src="db.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="db.js?v=5"></script>
+<script src="app.js?v=5"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="reports.js?v=4"></script>
 </body>
