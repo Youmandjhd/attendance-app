@@ -4,6 +4,13 @@ function cairoDate(d) {
   return (d || new Date()).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 }
 
+function entryType(e) {
+  if (e.data && e.data.type) return e.data.type;
+  if (e.action === "تسجيل حضور" && e.data) return "in";
+  if (e.action === "تسجيل انصراف" && e.data) return "out";
+  return null;
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("attendance", 2);
@@ -79,5 +86,57 @@ const DB = {
   },
   openRecords() {
     return tx("attendance", "readonly", s => s.index("open").getAll(1));
+  },
+  recentLog(limit) {
+    return new Promise((resolve, reject) => {
+      const out = [];
+      const t = db.transaction("log", "readonly");
+      const req = t.objectStore("log").openCursor(null, "prev");
+      req.onsuccess = () => {
+        const c = req.result;
+        if (c && out.length < limit) { out.push(c.value); c.continue(); }
+      };
+      t.oncomplete = () => resolve(out);
+      t.onabort = () => reject(t.error);
+    });
+  },
+  undoLast(todayStr) {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(["log", "attendance", "workers"], "readwrite");
+      const logS = t.objectStore("log");
+      const attS = t.objectStore("attendance");
+      const wS = t.objectStore("workers");
+      let result = null;
+      const req = logS.openCursor(null, "prev");
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return;
+        const e = c.value;
+        if (cairoDate(new Date(e.time)) !== todayStr) return;
+        const type = entryType(e);
+        if (e.undone || !type) { c.continue(); return; }
+        e.undone = true;
+        c.update(e);
+        if (type === "in") {
+          attS.delete(e.data.recordId);
+        } else if (type === "out") {
+          const g = attS.get(e.data.recordId);
+          g.onsuccess = () => {
+            const rec = g.result;
+            if (rec) { rec.checkOut = null; rec.open = 1; attS.put(rec); }
+          };
+        } else if (type === "addWorker") {
+          wS.delete(e.data.workerId);
+        }
+        logS.add({
+          time: new Date().toISOString(),
+          action: "تراجع",
+          details: e.action + " — " + e.details
+        });
+        result = e;
+      };
+      t.oncomplete = () => resolve(result);
+      t.onabort = () => reject(t.error);
+    });
   }
 };
