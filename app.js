@@ -1,8 +1,7 @@
 const $ = id => document.getElementById(id);
 let workers = [];
 let openByWorker = new Map();
-let doneMsByWorker = new Map();
-let lastOutByWorker = new Map();
+let shiftByWorker = new Map();
 let busy = false;
 let toastTimer;
 let pressTimer = null;
@@ -37,6 +36,11 @@ function fmtTime(iso) {
     { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" });
 }
 
+function fmtShortDate(iso) {
+  return new Date(iso).toLocaleDateString("ar-EG",
+    { timeZone: "Africa/Cairo", day: "numeric", month: "numeric" });
+}
+
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString("ar-EG", {
     timeZone: "Africa/Cairo", year: "numeric", month: "2-digit",
@@ -51,9 +55,18 @@ function fmtDuration(ms) {
   return h.toLocaleString("ar-EG") + " س " + m.toLocaleString("ar-EG") + " د";
 }
 
+function recordsBetween(from, to) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("attendance", "readonly");
+    const req = t.objectStore("attendance").index("date").getAll(IDBKeyRange.bound(from, to));
+    t.oncomplete = () => resolve(req.result);
+    t.onabort = () => reject(t.error);
+  });
+}
+
 function isArmed(w) {
-  const last = lastOutByWorker.get(w.id);
-  return !!(w.newDayAt && last && w.newDayAt > last);
+  const g = shiftByWorker.get(w.id);
+  return !!(g && w.newDayAt && w.newDayAt > g.lastOut);
 }
 
 function render() {
@@ -67,11 +80,11 @@ function render() {
   const list = $("list");
   list.innerHTML = "";
   const now = Date.now();
+  const today = cairoDate();
 
   for (const w of shown) {
     const open = openByWorker.get(w.id);
-    const doneMs = doneMsByWorker.get(w.id);
-    const armed = isArmed(w);
+    const g = shiftByWorker.get(w.id);
     let statusText = "لم يسجل حضور";
     let statusCls = "none";
     let hoursText = "";
@@ -80,15 +93,17 @@ function render() {
     let canNewDay = false;
 
     if (open) {
+      const prior = g && g.date === open.date ? g.doneMs : 0;
+      const dayTag = open.date !== today ? " (" + fmtShortDate(open.checkIn) + ")" : "";
       statusText = "قيد العمل";
       statusCls = "working";
-      hoursText = "حضور " + fmtTime(open.checkIn) + " — ساعات العمل: " +
-        fmtDuration((doneMs || 0) + now - new Date(open.checkIn).getTime());
+      hoursText = "حضور " + fmtTime(open.checkIn) + dayTag + " — ساعات العمل: " +
+        fmtDuration(prior + now - new Date(open.checkIn).getTime());
       canIn = false;
       canOut = true;
-    } else if (doneMs !== undefined) {
-      hoursText = "ساعات العمل: " + fmtDuration(doneMs);
-      if (armed) {
+    } else if (g) {
+      hoursText = "ساعات العمل: " + fmtDuration(g.doneMs);
+      if (isArmed(w)) {
         statusText = "جاهز لحضور جديد";
         statusCls = "ready";
       } else {
@@ -139,17 +154,21 @@ async function loadWorkers() {
 
 async function loadAttendance() {
   const today = cairoDate();
-  const todayRecs = await DB.recordsForDate(today);
+  const from = cairoDate(new Date(Date.now() - 48 * 3600 * 1000));
+  const recent = await recordsBetween(from, today);
   const openRecs = await DB.openRecords();
   openByWorker = new Map(openRecs.map(r => [r.workerId, r]));
-  doneMsByWorker = new Map();
-  lastOutByWorker = new Map();
-  for (const r of todayRecs) {
-    if (r.checkOut) {
-      const ms = new Date(r.checkOut) - new Date(r.checkIn);
-      doneMsByWorker.set(r.workerId, (doneMsByWorker.get(r.workerId) || 0) + ms);
-      const prev = lastOutByWorker.get(r.workerId);
-      if (!prev || r.checkOut > prev) lastOutByWorker.set(r.workerId, r.checkOut);
+  shiftByWorker = new Map();
+  for (const r of recent) {
+    if (!r.checkOut) continue;
+    if (r.date !== today && cairoDate(new Date(r.checkOut)) !== today) continue;
+    const ms = new Date(r.checkOut) - new Date(r.checkIn);
+    const g = shiftByWorker.get(r.workerId);
+    if (!g || r.date > g.date) {
+      shiftByWorker.set(r.workerId, { date: r.date, doneMs: ms, lastOut: r.checkOut });
+    } else if (r.date === g.date) {
+      g.doneMs += ms;
+      if (r.checkOut > g.lastOut) g.lastOut = r.checkOut;
     }
   }
   render();
@@ -162,7 +181,7 @@ async function doAction(act, workerId) {
     const w = workers.find(x => x.id === workerId);
     if (!w) return;
     if (act === "in") {
-      const locked = doneMsByWorker.has(workerId) && !isArmed(w);
+      const locked = shiftByWorker.has(workerId) && !isArmed(w);
       if (openByWorker.has(workerId) || locked) return;
       const recordId = await DB.checkIn(workerId);
       await DB.addLog("تسجيل حضور", w.name, { type: "in", workerId, recordId });
@@ -172,7 +191,7 @@ async function doAction(act, workerId) {
       await DB.checkOut(rec.id);
       await DB.addLog("تسجيل انصراف", w.name, { type: "out", workerId, recordId: rec.id });
     } else if (act === "newday") {
-      if (openByWorker.has(workerId) || !doneMsByWorker.has(workerId) || isArmed(w)) return;
+      if (openByWorker.has(workerId) || !shiftByWorker.has(workerId) || isArmed(w)) return;
       const prev = await DB.newDay(workerId);
       await DB.addLog("يوم جديد", w.name, { type: "newDay", workerId, prev });
       await loadWorkers();
