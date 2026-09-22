@@ -1,13 +1,10 @@
 async function exportBackup() {
   try {
     const [workers, attendance, log] = await Promise.all([
-      tx("workers", "readonly", s => s.getAll()),
-      tx("attendance", "readonly", s => s.getAll()),
-      tx("log", "readonly", s => s.getAll())
+      DB.allWorkers(), DB.allAttendance(), DB.allLog()
     ]);
     const payload = {
-      app: "attendance-backup",
-      version: 1,
+      app: "attendance-backup", version: 2,
       exportedAt: new Date().toISOString(),
       workers, attendance, log
     };
@@ -49,29 +46,80 @@ async function importBackup(file) {
     return;
   }
   const ok = confirm(
-    "سيتم حذف كل البيانات الحالية واستبدالها بالنسخة الاحتياطية بتاريخ " +
-    fmtDateTime(data.exportedAt) +
-    "\nعدد العمال في النسخة: " + data.workers.length +
-    "\nهل أنت متأكد؟"
+    "سيتم إضافة بيانات هذا الملف كعمال وسجلات جديدة في قاعدة البيانات الحالية (لن يتم حذف أي شيء موجود حاليًا).\n" +
+    "تاريخ النسخة: " + fmtDateTime(data.exportedAt) +
+    "\nعدد العمال في الملف: " + data.workers.length +
+    "\nقد يستغرق هذا بعض الوقت. هل تريد المتابعة؟"
   );
   if (!ok) return;
+
+  const btn = $("restoreBtn");
+  const original = btn.textContent;
+  btn.disabled = true;
+
   try {
-    await new Promise((resolve, reject) => {
-      const t = db.transaction(["workers", "attendance", "log"], "readwrite");
-      t.objectStore("workers").clear();
-      t.objectStore("attendance").clear();
-      t.objectStore("log").clear();
-      for (const w of data.workers) t.objectStore("workers").put(w);
-      for (const a of data.attendance || []) t.objectStore("attendance").put(a);
-      for (const l of data.log || []) t.objectStore("log").put(l);
-      t.oncomplete = resolve;
-      t.onabort = () => reject(t.error);
-    });
-    toast("تم استرجاع النسخة الاحتياطية بنجاح");
+    const workerMap = new Map();
+    for (let i = 0; i < data.workers.length; i++) {
+      const w = data.workers[i];
+      btn.textContent = "جارٍ الاستيراد: عمال " + (i + 1) + "/" + data.workers.length;
+      const newId = await DB.addWorker(w.name, w.cardCode).catch(async () => {
+        const rows = await sb("workers", {
+          method: "POST",
+          body: JSON.stringify({
+            name: w.name, card_code: w.cardCode,
+            active: w.active !== false, deleted: !!w.deleted,
+            new_day_at: w.newDayAt || null
+          })
+        });
+        return rows[0].id;
+      });
+      workerMap.set(w.id, newId);
+    }
+
+    const attMap = new Map();
+    const atts = data.attendance || [];
+    for (let i = 0; i < atts.length; i++) {
+      const a = atts[i];
+      const wid = workerMap.get(a.workerId);
+      if (!wid) continue;
+      btn.textContent = "جارٍ الاستيراد: حضور " + (i + 1) + "/" + atts.length;
+      const rows = await sb("attendance", {
+        method: "POST",
+        body: JSON.stringify({
+          worker_id: wid, date: a.date,
+          check_in: a.checkIn, check_out: a.checkOut || null,
+          open: !a.checkOut
+        })
+      });
+      attMap.set(a.id, rows[0].id);
+    }
+
+    const logs = data.log || [];
+    for (let i = 0; i < logs.length; i++) {
+      const l = logs[i];
+      btn.textContent = "جارٍ الاستيراد: سجل " + (i + 1) + "/" + logs.length;
+      let nd = l.data;
+      if (nd) {
+        nd = Object.assign({}, nd);
+        if (nd.workerId != null) nd.workerId = workerMap.get(nd.workerId) || nd.workerId;
+        if (nd.recordId != null) nd.recordId = attMap.get(nd.recordId) || nd.recordId;
+      }
+      await sb("op_log", {
+        method: "POST", prefer: "return=minimal",
+        body: JSON.stringify({
+          action: l.action, details: l.details, data: nd, undone: !!l.undone
+        })
+      });
+    }
+
+    toast("تم استيراد " + data.workers.length + " عامل بنجاح");
     await loadWorkers();
     await loadAttendance();
   } catch (err) {
-    toast("حدث خطأ أثناء الاسترجاع");
+    toast("حدث خطأ أثناء الاستيراد — راجع البيانات وحاول مرة أخرى");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
   }
 }
 
