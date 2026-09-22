@@ -1,0 +1,5 @@
+#gateOverlay{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.gate-box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:24px;width:100%;max-width:340px;text-align:center}
+.gate-box h2{margin:0 0 16px}
+.gate-box input{margin-bottom:10px;text-align:center}
+.gate-err{color:#b42318;font-size:14px;min-height:18px;margin-bottom:8px}
