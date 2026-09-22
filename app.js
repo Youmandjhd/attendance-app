@@ -55,15 +55,6 @@ function fmtDuration(ms) {
   return h.toLocaleString("ar-EG") + " س " + m.toLocaleString("ar-EG") + " د";
 }
 
-function recordsBetween(from, to) {
-  return new Promise((resolve, reject) => {
-    const t = db.transaction("attendance", "readonly");
-    const req = t.objectStore("attendance").index("date").getAll(IDBKeyRange.bound(from, to));
-    t.oncomplete = () => resolve(req.result);
-    t.onabort = () => reject(t.error);
-  });
-}
-
 function isArmed(w) {
   const g = shiftByWorker.get(w.id);
   return !!(g && w.newDayAt && w.newDayAt > g.lastOut);
@@ -155,7 +146,7 @@ async function loadWorkers() {
 async function loadAttendance() {
   const today = cairoDate();
   const from = cairoDate(new Date(Date.now() - 48 * 3600 * 1000));
-  const recent = await recordsBetween(from, today);
+  const recent = await DB.recordsBetween(from, today);
   const openRecs = await DB.openRecords();
   openByWorker = new Map(openRecs.map(r => [r.workerId, r]));
   shiftByWorker = new Map();
@@ -327,11 +318,17 @@ function setupLongPress() {
   });
 }
 
+function waitForUnlock() {
+  return new Promise(resolve => {
+    if (localStorage.getItem("attendance_access_ok") === "1") { resolve(); return; }
+    window.addEventListener("app-unlocked", () => resolve(), { once: true });
+  });
+}
+
 async function init() {
   tick();
   setInterval(tick, 1000);
-  await openDB();
-  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  await waitForUnlock();
   $("addBtn").onclick = openDialog;
   $("cancelBtn").onclick = () => $("dlg").close();
   $("form").onsubmit = saveWorker;
