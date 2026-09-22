@@ -7,8 +7,18 @@
 <link rel="stylesheet" href="style.css?v=3">
 <link rel="stylesheet" href="reports.css?v=4">
 <link rel="stylesheet" href="extra.css?v=5">
+<link rel="stylesheet" href="gate.css?v=1">
 </head>
 <body>
+<div id="gateOverlay">
+  <div class="gate-box">
+    <h2>دخول المشرفين</h2>
+    <input id="gateInput" type="password" placeholder="مفتاح الوصول" autocomplete="off">
+    <div id="gateErr" class="gate-err"></div>
+    <button id="gateBtn" class="btn-primary">دخول</button>
+  </div>
+</div>
+
 <header class="topbar no-print">
   <h1>حضور العمالة</h1>
   <div id="clock" class="clock">--:--:--</div>
@@ -26,7 +36,7 @@
   </div>
   <div class="subbar">
     <button id="backupBtn">⬇ نسخة احتياطية</button>
-    <button id="restoreBtn">⬆ استرجاع نسخة</button>
+    <button id="restoreBtn">⬆ استيراد نسخة</button>
     <input type="file" id="restoreFile" accept="application/json" class="hide">
   </div>
   <div id="count" class="count"></div>
@@ -89,10 +99,11 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="db.js?v=5"></script>
-<script src="app.js?v=6"></script>
+<script src="gate.js?v=1"></script>
+<script src="db.js?v=7"></script>
+<script src="app.js?v=7"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="reports.js?v=4"></script>
-<script src="backup.js?v=1"></script>
+<script src="reports.js?v=5"></script>
+<script src="backup.js?v=2"></script>
 </body>
 </html>
