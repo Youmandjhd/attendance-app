@@ -1,214 +1,180 @@
-let db;
+const SUPABASE_URL = "https://eixxbkfmwwxryuhiqbcf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_a3VcVSCAheV4gwMSNEpNOg_tsPfXuwm";
+
+async function sb(path, opts) {
+  opts = opts || {};
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
+    method: opts.method || "GET",
+    body: opts.body,
+    headers: Object.assign({
+      "apikey": SUPABASE_KEY,
+      "Authorization": "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json",
+      "Prefer": opts.prefer || "return=representation"
+    }, opts.headers || {})
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error("Supabase error " + res.status + ": " + text);
+  }
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
 
 function cairoDate(d) {
   return (d || new Date()).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 }
 
 function entryType(e) {
-  if (e.data && e.data.type) return e.data.type;
-  if (e.action === "تسجيل حضور" && e.data) return "in";
-  if (e.action === "تسجيل انصراف" && e.data) return "out";
-  return null;
+  return (e.data && e.data.type) || null;
 }
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("attendance", 3);
-    req.onupgradeneeded = (e) => {
-      const d = req.result;
-      const t = req.transaction;
-      if (e.oldVersion < 1) {
-        const w = d.createObjectStore("workers", { keyPath: "id", autoIncrement: true });
-        w.createIndex("cardCode", "cardCode", { unique: true });
-        const a = d.createObjectStore("attendance", { keyPath: "id", autoIncrement: true });
-        a.createIndex("date", "date");
-        a.createIndex("workerId", "workerId");
-        d.createObjectStore("log", { keyPath: "id", autoIncrement: true });
-      }
-      if (e.oldVersion < 2) {
-        t.objectStore("attendance").createIndex("open", "open");
-      }
-      if (e.oldVersion < 3) {
-        const ws = t.objectStore("workers");
-        if (ws.indexNames.contains("cardCode")) ws.deleteIndex("cardCode");
-        ws.createIndex("cardCode", "cardCode", { unique: false });
-      }
-    };
-    req.onblocked = () => alert("اقفل باقي نوافذ التطبيق المفتوحة ثم افتحه من جديد");
-    req.onsuccess = () => {
-      db = req.result;
-      db.onversionchange = () => db.close();
-      resolve();
-    };
-    req.onerror = () => reject(req.error);
-  });
+function toWorker(r) {
+  return {
+    id: r.id, name: r.name, cardCode: r.card_code, active: r.active,
+    deleted: r.deleted, newDayAt: r.new_day_at, createdAt: r.created_at
+  };
+}
+function toAttendance(r) {
+  return {
+    id: r.id, workerId: r.worker_id, date: r.date,
+    checkIn: r.check_in, checkOut: r.check_out, open: r.open
+  };
+}
+function toLog(r) {
+  return {
+    id: r.id, time: r.time, action: r.action,
+    details: r.details, data: r.data, undone: r.undone
+  };
 }
 
-function tx(store, mode, fn) {
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(store, mode);
-    const r = fn(t.objectStore(store));
-    t.oncomplete = () => resolve(r && r.result);
-    t.onabort = () => reject(t.error);
-  });
-}
+async function openDB() { return; }
 
 const DB = {
-  addWorker(name, cardCode) {
-    return new Promise((resolve, reject) => {
-      const t = db.transaction("workers", "readwrite");
-      const s = t.objectStore("workers");
-      let newId;
-      const g = s.getAll();
-      g.onsuccess = () => {
-        if (g.result.some(w => !w.deleted && w.cardCode === cardCode)) {
-          const err = new Error("duplicate card");
-          err.name = "ConstraintError";
-          reject(err);
-          t.abort();
-          return;
-        }
-        const a = s.add({ name, cardCode, active: true, createdAt: new Date().toISOString() });
-        a.onsuccess = () => { newId = a.result; };
-      };
-      t.oncomplete = () => resolve(newId);
-      t.onabort = () => reject(t.error);
+  async addWorker(name, cardCode) {
+    const dup = await sb("workers?deleted=eq.false&card_code=eq." + encodeURIComponent(cardCode) + "&select=id");
+    if (dup.length) {
+      const err = new Error("duplicate card");
+      err.name = "ConstraintError";
+      throw err;
+    }
+    const rows = await sb("workers", {
+      method: "POST",
+      body: JSON.stringify({ name, card_code: cardCode })
+    });
+    return rows[0].id;
+  },
+  async allWorkers() {
+    const rows = await sb("workers?select=*&order=id.asc");
+    return rows.map(toWorker);
+  },
+  async allAttendance() {
+    const rows = await sb("attendance?select=*&order=id.asc");
+    return rows.map(toAttendance);
+  },
+  async allLog() {
+    const rows = await sb("op_log?select=*&order=id.asc");
+    return rows.map(toLog);
+  },
+  async newDay(workerId) {
+    const cur = await sb("workers?id=eq." + workerId + "&select=new_day_at");
+    const prev = cur[0] ? cur[0].new_day_at : null;
+    await sb("workers?id=eq." + workerId, {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: JSON.stringify({ new_day_at: new Date().toISOString() })
+    });
+    return prev;
+  },
+  async deleteWorker(workerId) {
+    await sb("workers?id=eq." + workerId, {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: JSON.stringify({ deleted: true })
     });
   },
-  allWorkers() {
-    return tx("workers", "readonly", s => s.getAll());
-  },
-  setWorkerFields(workerId, fn) {
-    return new Promise((resolve, reject) => {
-      const t = db.transaction("workers", "readwrite");
-      const s = t.objectStore("workers");
-      const g = s.get(workerId);
-      let prev;
-      g.onsuccess = () => {
-        const w = g.result;
-        if (!w) return;
-        prev = fn(w);
-        s.put(w);
-      };
-      t.oncomplete = () => resolve(prev);
-      t.onabort = () => reject(t.error);
+  async addLog(action, details, data) {
+    const rows = await sb("op_log", {
+      method: "POST",
+      body: JSON.stringify({ action, details, data: data || null })
     });
+    return rows[0].id;
   },
-  newDay(workerId) {
-    return DB.setWorkerFields(workerId, w => {
-      const prev = w.newDayAt || null;
-      w.newDayAt = new Date().toISOString();
-      return prev;
-    });
-  },
-  deleteWorker(workerId) {
-    return DB.setWorkerFields(workerId, w => {
-      w.deleted = true;
-      w.deletedAt = new Date().toISOString();
-    });
-  },
-  addLog(action, details, data) {
-    return tx("log", "readwrite", s =>
-      s.add({ time: new Date().toISOString(), action, details, data }));
-  },
-  checkIn(workerId) {
+  async checkIn(workerId) {
     const now = new Date();
-    const rec = {
-      workerId,
-      date: cairoDate(now),
-      checkIn: now.toISOString(),
-      checkOut: null,
-      open: 1
-    };
-    return tx("attendance", "readwrite", s => s.add(rec));
+    const rows = await sb("attendance", {
+      method: "POST",
+      body: JSON.stringify({
+        worker_id: workerId, date: cairoDate(now),
+        check_in: now.toISOString(), check_out: null, open: true
+      })
+    });
+    return rows[0].id;
   },
-  checkOut(recordId) {
-    return new Promise((resolve, reject) => {
-      const t = db.transaction("attendance", "readwrite");
-      const s = t.objectStore("attendance");
-      const g = s.get(recordId);
-      g.onsuccess = () => {
-        const rec = g.result;
-        rec.checkOut = new Date().toISOString();
-        delete rec.open;
-        s.put(rec);
-      };
-      t.oncomplete = () => resolve();
-      t.onabort = () => reject(t.error);
+  async checkOut(recordId) {
+    await sb("attendance?id=eq." + recordId, {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: JSON.stringify({ check_out: new Date().toISOString(), open: false })
     });
   },
-  recordsForDate(date) {
-    return tx("attendance", "readonly", s => s.index("date").getAll(date));
+  async recordsForDate(date) {
+    const rows = await sb("attendance?date=eq." + date + "&select=*");
+    return rows.map(toAttendance);
   },
-  openRecords() {
-    return tx("attendance", "readonly", s => s.index("open").getAll(1));
+  async recordsBetween(from, to) {
+    const rows = await sb("attendance?date=gte." + from + "&date=lte." + to + "&select=*");
+    return rows.map(toAttendance);
   },
-  recentLog(limit) {
-    return new Promise((resolve, reject) => {
-      const out = [];
-      const t = db.transaction("log", "readonly");
-      const req = t.objectStore("log").openCursor(null, "prev");
-      req.onsuccess = () => {
-        const c = req.result;
-        if (c && out.length < limit) { out.push(c.value); c.continue(); }
-      };
-      t.oncomplete = () => resolve(out);
-      t.onabort = () => reject(t.error);
-    });
+  async openRecords() {
+    const rows = await sb("attendance?open=eq.true&select=*");
+    return rows.map(toAttendance);
   },
-  undoLast(todayStr) {
-    return new Promise((resolve, reject) => {
-      const t = db.transaction(["log", "attendance", "workers"], "readwrite");
-      const logS = t.objectStore("log");
-      const attS = t.objectStore("attendance");
-      const wS = t.objectStore("workers");
-      let result = null;
-      const req = logS.openCursor(null, "prev");
-      req.onsuccess = () => {
-        const c = req.result;
-        if (!c) return;
-        const e = c.value;
-        if (cairoDate(new Date(e.time)) !== todayStr) return;
-        const type = entryType(e);
-        if (e.undone || !type) { c.continue(); return; }
-        e.undone = true;
-        c.update(e);
-        if (type === "in") {
-          attS.delete(e.data.recordId);
-        } else if (type === "out") {
-          const g = attS.get(e.data.recordId);
-          g.onsuccess = () => {
-            const rec = g.result;
-            if (rec) { rec.checkOut = null; rec.open = 1; attS.put(rec); }
-          };
-        } else if (type === "addWorker") {
-          wS.delete(e.data.workerId);
-        } else if (type === "newDay") {
-          const g = wS.get(e.data.workerId);
-          g.onsuccess = () => {
-            const w = g.result;
-            if (w) {
-              if (e.data.prev) w.newDayAt = e.data.prev;
-              else delete w.newDayAt;
-              wS.put(w);
-            }
-          };
-        } else if (type === "deleteWorker") {
-          const g = wS.get(e.data.workerId);
-          g.onsuccess = () => {
-            const w = g.result;
-            if (w) { delete w.deleted; delete w.deletedAt; wS.put(w); }
-          };
-        }
-        logS.add({
-          time: new Date().toISOString(),
-          action: "تراجع",
-          details: e.action + " — " + e.details
+  async recentLog(limit) {
+    const rows = await sb("op_log?select=*&order=id.desc&limit=" + limit);
+    return rows.map(toLog);
+  },
+  async undoLast(todayStr) {
+    const rows = await sb("op_log?select=*&order=id.desc&limit=50");
+    for (const r of rows) {
+      const e = toLog(r);
+      if (cairoDate(new Date(e.time)) !== todayStr) continue;
+      const type = entryType(e);
+      if (e.undone || !type) continue;
+
+      await sb("op_log?id=eq." + e.id, {
+        method: "PATCH", prefer: "return=minimal",
+        body: JSON.stringify({ undone: true })
+      });
+
+      if (type === "in") {
+        await sb("attendance?id=eq." + e.data.recordId, { method: "DELETE", prefer: "return=minimal" });
+      } else if (type === "out") {
+        await sb("attendance?id=eq." + e.data.recordId, {
+          method: "PATCH", prefer: "return=minimal",
+          body: JSON.stringify({ check_out: null, open: true })
         });
-        result = e;
-      };
-      t.oncomplete = () => resolve(result);
-      t.onabort = () => reject(t.error);
-    });
+      } else if (type === "addWorker") {
+        await sb("workers?id=eq." + e.data.workerId, { method: "DELETE", prefer: "return=minimal" });
+      } else if (type === "newDay") {
+        await sb("workers?id=eq." + e.data.workerId, {
+          method: "PATCH", prefer: "return=minimal",
+          body: JSON.stringify({ new_day_at: e.data.prev })
+        });
+      } else if (type === "deleteWorker") {
+        await sb("workers?id=eq." + e.data.workerId, {
+          method: "PATCH", prefer: "return=minimal",
+          body: JSON.stringify({ deleted: false })
+        });
+      }
+
+      await sb("op_log", {
+        method: "POST", prefer: "return=minimal",
+        body: JSON.stringify({ action: "تراجع", details: e.action + " — " + e.details })
+      });
+      return e;
+    }
+    return null;
   }
 };
