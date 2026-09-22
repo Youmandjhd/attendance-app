@@ -24,6 +24,11 @@
     <button id="logBtn">سجل العمليات</button>
     <button id="repBtn">التقارير</button>
   </div>
+  <div class="subbar">
+    <button id="backupBtn">⬇ نسخة احتياطية</button>
+    <button id="restoreBtn">⬆ استرجاع نسخة</button>
+    <input type="file" id="restoreFile" accept="application/json" class="hide">
+  </div>
   <div id="count" class="count"></div>
   <ul id="list" class="list"></ul>
 </main>
@@ -88,5 +93,6 @@
 <script src="app.js?v=6"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="reports.js?v=4"></script>
+<script src="backup.js?v=1"></script>
 </body>
 </html>
