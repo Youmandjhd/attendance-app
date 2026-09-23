@@ -1,27 +1,5 @@
-const ACCESS_KEY = "07915236";
-const GATE_STORAGE_KEY = "attendance_access_ok";
-
-function checkGate() {
-  const val = document.getElementById("gateInput").value.trim();
-  if (val === ACCESS_KEY) {
-    localStorage.setItem(GATE_STORAGE_KEY, "1");
-    document.getElementById("gateOverlay").classList.add("hide");
-    window.dispatchEvent(new Event("app-unlocked"));
-  } else {
-    document.getElementById("gateErr").textContent = "مفتاح الوصول غير صحيح";
-    document.getElementById("gateInput").value = "";
-    document.getElementById("gateInput").focus();
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("gateBtn").onclick = checkGate;
-  document.getElementById("gateInput").onkeydown = e => {
-    if (e.key === "Enter") checkGate();
-  };
-  if (localStorage.getItem(GATE_STORAGE_KEY) === "1") {
-    document.getElementById("gateOverlay").classList.add("hide");
-  } else {
-    document.getElementById("gateInput").focus();
-  }
-});
+#gateOverlay{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.gate-box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:24px;width:100%;max-width:340px;text-align:center}
+.gate-box h2{margin:0 0 16px}
+.gate-box input{margin-bottom:10px;text-align:center}
+.gate-err{color:#b42318;font-size:14px;min-height:18px;margin-bottom:8px}
