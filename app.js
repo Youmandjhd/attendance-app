@@ -24,7 +24,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 6000);
 }
 
 function tick() {
@@ -189,7 +189,7 @@ async function doAction(act, workerId) {
     }
     await loadAttendance();
   } catch (err) {
-    toast("حدث خطأ أثناء التسجيل");
+    toast("خطأ: " + (err && err.message ? err.message : "غير معروف"));
   } finally {
     busy = false;
   }
@@ -208,7 +208,7 @@ async function doUndo() {
       await loadAttendance();
     }
   } catch (err) {
-    toast("حدث خطأ أثناء التراجع");
+    toast("خطأ: " + (err && err.message ? err.message : "غير معروف"));
   } finally {
     busy = false;
   }
@@ -247,9 +247,11 @@ async function saveWorker(e) {
     $("dlg").close();
     await loadWorkers();
   } catch (err) {
-    $("err").textContent = err && err.name === "ConstraintError"
-      ? "رقم البطاقة مسجل مسبقًا"
-      : "حدث خطأ أثناء الحفظ";
+    if (err && err.name === "ConstraintError") {
+      $("err").textContent = "رقم البطاقة مسجل مسبقًا";
+    } else {
+      $("err").textContent = "خطأ: " + (err && err.message ? err.message : "غير معروف");
+    }
   }
 }
 
@@ -281,7 +283,7 @@ async function confirmDelete() {
     await loadWorkers();
     await loadAttendance();
   } catch (err) {
-    toast("حدث خطأ أثناء الحذف");
+    toast("خطأ: " + (err && err.message ? err.message : "غير معروف"));
   } finally {
     busy = false;
   }
@@ -344,8 +346,12 @@ async function init() {
     doAction(b.dataset.act, Number(b.dataset.id));
   };
   setupLongPress();
-  await loadWorkers();
-  await loadAttendance();
+  try {
+    await loadWorkers();
+    await loadAttendance();
+  } catch (err) {
+    toast("خطأ في تحميل البيانات: " + (err && err.message ? err.message : "غير معروف"));
+  }
   setInterval(loadAttendance, 30000);
 }
 init();
