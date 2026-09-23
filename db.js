@@ -8,7 +8,6 @@ async function sb(path, opts) {
     body: opts.body,
     headers: Object.assign({
       "apikey": SUPABASE_KEY,
-      "Authorization": "Bearer " + SUPABASE_KEY,
       "Content-Type": "application/json",
       "Prefer": opts.prefer || "return=representation"
     }, opts.headers || {})
