@@ -8,21 +8,19 @@ function gateNormalizeDigits(s) {
 function unlockApp() {
   try {
     localStorage.setItem(GATE_STORAGE_KEY, "1");
-  } catch (err) {
-    // بعض المتصفحات بتمنع localStorage (مثل وضع التصفح الخفي) — نكمل من غيره
-  }
+  } catch (err) {}
   document.getElementById("gateOverlay").classList.add("hide");
   window.dispatchEvent(new Event("app-unlocked"));
 }
 
 function checkGate() {
-  const val = gateNormalizeDigits(document.getElementById("gateInput").value.trim());
+  const raw = document.getElementById("gateInput").value;
+  const val = gateNormalizeDigits(raw.trim());
   if (val === ACCESS_KEY) {
     unlockApp();
   } else {
-    document.getElementById("gateErr").textContent = "مفتاح الوصول غير صحيح";
-    document.getElementById("gateInput").value = "";
-    document.getElementById("gateInput").focus();
+    document.getElementById("gateErr").textContent =
+      "غير صحيح — القيمة المكتوبة: [" + val + "] بطول " + val.length + " حرف";
   }
 }
 
