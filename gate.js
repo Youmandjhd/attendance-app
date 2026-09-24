@@ -1,42 +1,64 @@
-const ACCESS_KEY = "07915236";
-const GATE_STORAGE_KEY = "attendance_access_ok";
+(function() {
+  var ACCESS_KEY = "07915236";
+  var GATE_STORAGE_KEY = "attendance_access_ok";
+  var GATE_VERSION = "v7";
 
-function gateNormalizeDigits(s) {
-  return s.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
-}
-
-function unlockApp() {
-  try {
-    localStorage.setItem(GATE_STORAGE_KEY, "1");
-  } catch (err) {}
-  document.getElementById("gateOverlay").classList.add("hide");
-  window.dispatchEvent(new Event("app-unlocked"));
-}
-
-function checkGate() {
-  const raw = document.getElementById("gateInput").value;
-  const val = gateNormalizeDigits(raw.trim());
-  if (val === ACCESS_KEY) {
-    unlockApp();
-  } else {
-    document.getElementById("gateErr").textContent =
-      "غير صحيح — القيمة المكتوبة: [" + val + "] بطول " + val.length + " حرف";
+  function normalize(s) {
+    return s.replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); });
   }
-}
 
-document.getElementById("gateBtn").onclick = checkGate;
-document.getElementById("gateInput").onkeydown = e => {
-  if (e.key === "Enter") checkGate();
-};
+  function showMsg(msg) {
+    var e = document.getElementById("gateErr");
+    if (e) e.textContent = msg;
+  }
 
-let already = false;
-try {
-  already = localStorage.getItem(GATE_STORAGE_KEY) === "1";
-} catch (err) {
-  already = false;
-}
-if (already) {
-  document.getElementById("gateOverlay").classList.add("hide");
-} else {
-  document.getElementById("gateInput").focus();
-}
+  function unlock() {
+    try { localStorage.setItem(GATE_STORAGE_KEY, "1"); } catch (e) {}
+    var ov = document.getElementById("gateOverlay");
+    if (ov) ov.classList.add("hide");
+    window.dispatchEvent(new Event("app-unlocked"));
+  }
+
+  function check() {
+    try {
+      var input = document.getElementById("gateInput");
+      var raw = input ? input.value : "";
+      var val = normalize(raw.trim());
+      if (val === ACCESS_KEY) {
+        unlock();
+      } else {
+        showMsg("[" + GATE_VERSION + "] غير صحيح — القيمة: [" + val + "]");
+      }
+    } catch (err) {
+      showMsg("خطأ داخلي: " + err.message);
+    }
+  }
+
+  function bind() {
+    try {
+      var btn = document.getElementById("gateBtn");
+      var input = document.getElementById("gateInput");
+      if (btn) btn.addEventListener("click", check);
+      if (input) {
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") check();
+        });
+      }
+      showMsg("[" + GATE_VERSION + " — الشاشة جاهزة، اكتب المفتاح]");
+      var already = false;
+      try { already = localStorage.getItem(GATE_STORAGE_KEY) === "1"; } catch (e) {}
+      if (already) {
+        var ov = document.getElementById("gateOverlay");
+        if (ov) ov.classList.add("hide");
+      }
+    } catch (err) {
+      alert("خطأ في تحميل شاشة الدخول: " + err.message);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();
