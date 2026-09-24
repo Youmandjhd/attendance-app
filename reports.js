@@ -2,16 +2,13 @@ let rpMode = "day";
 let rpData = null;
 
 function rangeRecords(from, to) {
-  return new Promise((resolve, reject) => {
-    const t = db.transaction("attendance", "readonly");
-    const req = t.objectStore("attendance").index("date").getAll(IDBKeyRange.bound(from, to));
-    t.oncomplete = () => resolve(req.result);
-    t.onabort = () => reject(t.error);
-  });
+  return DB.recordsBetween(from, to);
 }
 
 function nf(n) { return n.toLocaleString("ar-EG"); }
 function dec(ms) { return Math.round(ms / 36000) / 100; }
+function wholeHours(ms) { return Math.floor(ms / 3600000); }
+function fmtWholeHours(ms) { return nf(wholeHours(ms)) + " ساعة"; }
 function sortByName(a, b) {
   return (a.w ? a.w.name : "").localeCompare(b.w ? b.w.name : "", "ar");
 }
@@ -102,9 +99,9 @@ async function buildMonthly(month) {
     const card = w ? w.cardCode : "";
     totalMs += x.ms;
     totalDays += x.dates.size;
-    rows.push([nf(i + 1), name, card, nf(x.dates.size), fmtDuration(x.ms),
+    rows.push([nf(i + 1), name, card, nf(x.dates.size), fmtWholeHours(x.ms),
       x.open ? nf(x.open) + " بدون انصراف" : ""]);
-    xrows.push([i + 1, name, card, x.dates.size, dec(x.ms),
+    xrows.push([i + 1, name, card, x.dates.size, wholeHours(x.ms),
       x.open ? x.open + " بدون انصراف" : ""]);
   });
 
@@ -113,13 +110,13 @@ async function buildMonthly(month) {
     title: "تقرير الحضور الشهري",
     sub: "الشهر: " + longMonth(month) +
       " — عدد العمال: " + nf(items.length) +
-      " — إجمالي الساعات: " + fmtDuration(totalMs) + issued(),
+      " — إجمالي الساعات: " + fmtWholeHours(totalMs) + issued(),
     head: ["م", "الاسم", "رقم البطاقة", "أيام العمل", "إجمالي الساعات", "ملاحظات"],
     rows,
-    foot: ["", "الإجمالي", "", nf(totalDays), fmtDuration(totalMs), ""],
-    xhead: ["م", "الاسم", "رقم البطاقة", "أيام العمل", "إجمالي الساعات (عشري)", "ملاحظات"],
+    foot: ["", "الإجمالي", "", nf(totalDays), fmtWholeHours(totalMs), ""],
+    xhead: ["م", "الاسم", "رقم البطاقة", "أيام العمل", "إجمالي الساعات الكاملة", "ملاحظات"],
     xrows,
-    xfoot: ["", "الإجمالي", "", totalDays, dec(totalMs), ""]
+    xfoot: ["", "الإجمالي", "", totalDays, wholeHours(totalMs), ""]
   };
 }
 
