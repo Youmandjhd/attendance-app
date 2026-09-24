@@ -26,20 +26,19 @@ function checkGate() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("gateBtn").onclick = checkGate;
-  document.getElementById("gateInput").onkeydown = e => {
-    if (e.key === "Enter") checkGate();
-  };
-  let already = false;
-  try {
-    already = localStorage.getItem(GATE_STORAGE_KEY) === "1";
-  } catch (err) {
-    already = false;
-  }
-  if (already) {
-    document.getElementById("gateOverlay").classList.add("hide");
-  } else {
-    document.getElementById("gateInput").focus();
-  }
-});
+document.getElementById("gateBtn").onclick = checkGate;
+document.getElementById("gateInput").onkeydown = e => {
+  if (e.key === "Enter") checkGate();
+};
+
+let already = false;
+try {
+  already = localStorage.getItem(GATE_STORAGE_KEY) === "1";
+} catch (err) {
+  already = false;
+}
+if (already) {
+  document.getElementById("gateOverlay").classList.add("hide");
+} else {
+  document.getElementById("gateInput").focus();
+}
