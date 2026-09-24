@@ -1,7 +1,7 @@
-(function() {
+(function () {
   var ACCESS_KEY = "07915236";
   var GATE_STORAGE_KEY = "attendance_access_ok";
-  var GATE_VERSION = "v7";
+  var GATE_VERSION = "v8";
 
   function normalize(s) {
     return s.replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); });
@@ -19,7 +19,8 @@
     window.dispatchEvent(new Event("app-unlocked"));
   }
 
-  function check() {
+  function check(evt) {
+    if (evt && evt.preventDefault) evt.preventDefault();
     try {
       var input = document.getElementById("gateInput");
       var raw = input ? input.value : "";
@@ -32,19 +33,14 @@
     } catch (err) {
       showMsg("خطأ داخلي: " + err.message);
     }
+    return false;
   }
 
   function bind() {
     try {
-      var btn = document.getElementById("gateBtn");
-      var input = document.getElementById("gateInput");
-      if (btn) btn.addEventListener("click", check);
-      if (input) {
-        input.addEventListener("keydown", function (e) {
-          if (e.key === "Enter") check();
-        });
-      }
-      showMsg("[" + GATE_VERSION + " — الشاشة جاهزة، اكتب المفتاح]");
+      var form = document.getElementById("gateForm");
+      if (form) form.addEventListener("submit", check);
+      showMsg("[" + GATE_VERSION + " — الشاشة جاهزة، اكتب المفتاح واضغط دخول]");
       var already = false;
       try { already = localStorage.getItem(GATE_STORAGE_KEY) === "1"; } catch (e) {}
       if (already) {
