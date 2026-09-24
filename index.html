@@ -13,9 +13,11 @@
 <div id="gateOverlay">
   <div class="gate-box">
     <h2>دخول المشرفين</h2>
-    <input id="gateInput" type="text" inputmode="numeric" placeholder="مفتاح الوصول" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <div id="gateErr" class="gate-err"></div>
-    <button id="gateBtn" class="btn-primary">دخول</button>
+    <form id="gateForm">
+      <input id="gateInput" type="text" inputmode="numeric" placeholder="مفتاح الوصول" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div id="gateErr" class="gate-err"></div>
+      <button type="submit" id="gateBtn" class="btn-primary">دخول</button>
+    </form>
   </div>
 </div>
 
@@ -99,7 +101,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="gate.js?v=7"></script>
+<script src="gate.js?v=8"></script>
 <script src="db.js?v=9"></script>
 <script src="app.js?v=9"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
